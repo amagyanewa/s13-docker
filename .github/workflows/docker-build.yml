@@ -28,3 +28,8 @@ jobs:
           context: .
           file: ./Dockerfile
           push: false
+          load: true
+          tags: s13-training-camps:ci
+
+      - name: Show built image
+        run: docker image ls --no-trunc --format 'table {{.Repository}}\t{{.Tag}}\t{{.ID}}\t{{.Size}}' s13-training-camps
