@@ -22,14 +22,82 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      - name: Log in to Docker Hub
+        if: github.event_name == 'push'
+        uses: docker/login-action@v3
+        with:
+          username: devopseasylearning
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
       - name: Build image
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile
-          push: false
-          load: true
-          tags: s13-training-camps:ci
+          push: ${{ github.event_name == 'push' }}
+          tags: |
+            devopseasylearning/s13-training-camps:${{ github.sha }}
+            devopseasylearning/s13-training-camps:latest
 
-      - name: Show built image
-        run: docker image ls --no-trunc --format 'table {{.Repository}}\t{{.Tag}}\t{{.ID}}\t{{.Size}}' s13-training-camps
+      - name: Show pushed image
+        if: github.event_name == 'push'
+        env:
+          IMAGE: devopseasylearning/s13-training-camps
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          docker pull "${IMAGE}:${GITHUB_SHA}"
+          docker image ls --no-trunc --format 'table {{.Repository}}\t{{.Tag}}\t{{.ID}}\t{{.Size}}' "${IMAGE}"
+          printf 'Image digest: %s\n' "${IMAGE_DIGEST}"
+          {
+            echo '## Published Docker image'
+            echo "- Repository: [${IMAGE}](https://hub.docker.com/r/${IMAGE})"
+            echo "- Commit tag: \`${GITHUB_SHA}\`"
+            echo "- Latest tag: \`latest\`"
+            echo "- Digest: \`${IMAGE_DIGEST}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Start and verify published container
+        if: github.event_name == 'push'
+        env:
+          IMAGE: devopseasylearning/s13-training-camps
+        run: |
+          container_name=s13-training-camps-ci
+          docker run --detach \
+            --name "$container_name" \
+            --publish 127.0.0.1:8080:8080 \
+            "${IMAGE}:${GITHUB_SHA}"
+
+          for attempt in $(seq 1 30); do
+            if health_response=$(curl --fail --silent http://127.0.0.1:8080/health); then
+              courses_response=$(curl --fail --silent --show-error http://127.0.0.1:8080/api/courses) || {
+                docker ps --all --filter "name=${container_name}"
+                docker logs "$container_name"
+                exit 1
+              }
+              container_state=$(docker inspect --format '{{.State.Status}}' "$container_name")
+              printf 'Health response: %s\n' "$health_response"
+              printf 'Courses API response: %s\n' "$courses_response"
+              printf 'Container state: %s\n' "$container_state"
+              docker ps --no-trunc --filter "name=${container_name}"
+              docker logs "$container_name"
+              {
+                echo '## Published container smoke test'
+                echo "- Image: \`${IMAGE}:${GITHUB_SHA}\`"
+                echo "- Health: \`${health_response}\`"
+                echo "- Container state: \`${container_state}\`"
+                echo '- Container:'
+                echo '```text'
+                docker ps --no-trunc --filter "name=${container_name}"
+                echo '```'
+              } >> "$GITHUB_STEP_SUMMARY"
+              docker stop "$container_name"
+              exit 0
+            fi
+            sleep 2
+          done
+
+          echo 'Container did not become healthy within 60 seconds.' >&2
+          docker ps --all --filter "name=${container_name}"
+          docker logs "$container_name"
+          exit 1

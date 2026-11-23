@@ -12,7 +12,7 @@ The `app` container provides everything:
 - Enrollment API
 - File-based demo persistence through the `app-data` Docker volume
 
-The application uses only the Node.js standard library and has no package dependencies. The GitHub Actions workflow builds and pushes the Docker image on every branch push to Docker Hub as `devopseasylearning/s13-training-camps`, tagged with the full commit SHA and `latest`. It then starts the pushed image on the runner, checks the health and courses APIs, and shows the container status and logs in the Actions run.
+The application uses only the Node.js standard library and has no package dependencies. The GitHub Actions workflow builds and pushes the Docker image on every branch push to Docker Hub as `devopseasylearning/s13-training-camps`, tagged with the full commit SHA and `latest`. It then starts the pushed image temporarily, checks the health and courses APIs, and shows the image details, container status, and logs in the Actions run. Pull requests build the image without pushing it.
 
 ## Tools used
 
@@ -50,4 +50,4 @@ Use `docker volume rm s13-training-camps-data` only when you intentionally want 
 
 ## CI/CD
 
-`.github/workflows/docker-build.yml` builds and pushes the image to Docker Hub on every branch push using GitHub's hosted runner, then runs a temporary smoke-test container. The container only runs for the duration of the CI job; this is not a persistent deployment. Add a Docker Hub access token with write permission as the `DOCKERHUB_TOKEN` Actions repository secret. The Docker Hub repository `devopseasylearning/s13-training-camps` must exist and allow pushes.
+`.github/workflows/docker-build.yml` builds and pushes the image to Docker Hub on every branch push using GitHub's hosted runner, then runs a temporary container to check `/health` and `/api/courses` and show its status and logs. Pull requests only build the image. Add a Docker Hub access token with write permission as the `DOCKERHUB_TOKEN` Actions repository secret. The Docker Hub repository `devopseasylearning/s13-training-camps` must exist and allow pushes. The temporary container only runs for the duration of the CI job; this is not a persistent deployment.
